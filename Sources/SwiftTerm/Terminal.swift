@@ -1729,9 +1729,12 @@ open class Terminal {
             buffer.y = by + 1
             movedToNextLine = true
             let line = buffer.lines[buffer.yBase + buffer.y]
-            if !line.isWrapped {
-                line.bidiState = currentBidiState
+            // An explicit line feed means the row below does not continue this one. Programs that
+            // redraw in place after a resize revisit rows that reflow marked as wrapped.
+            if line.isWrapped {
+                line.isWrapped = false
             }
+            line.bidiState = currentBidiState
         }
         
         // If the end of the line is hit, prevent this action from wrapping around to the next line.
