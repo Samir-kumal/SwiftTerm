@@ -2542,6 +2542,13 @@ extension TerminalView {
         guard let metalView = metalView else {
             return
         }
+        #if os(macOS)
+        // An MTKView draws when asked even while hidden. viewDidUnhide asks again, and
+        // the renderer then finds every row that changed by its generation.
+        if metalView.isHiddenOrHasHiddenAncestor {
+            return
+        }
+        #endif
         metalView.setNeedsDisplay(metalView.bounds)
     }
 
@@ -2557,7 +2564,7 @@ extension TerminalView {
                 deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay))) { [weak self] in
                     guard let self else { return }
                     self.pendingMetalDisplay = false
-                    self.metalView?.setNeedsDisplay(self.metalView?.bounds ?? .zero)
+                    self.requestMetalDisplay()
                 }
         }
     }
