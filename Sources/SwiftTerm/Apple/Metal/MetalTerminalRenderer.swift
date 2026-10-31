@@ -96,10 +96,19 @@ struct RowDrawBuffers {
     var otherImageBuffers: [ImageDrawBuffer]
 }
 
+/// What a row's draw data depends on besides its line's cells, which `BufferLine.generation` covers.
+struct RowStyleKey: Equatable {
+    var fullScreenRevision: UInt64
+    var textBlinkVisible: Bool
+    var linkHighlightRange: [Terminal.LinkMatch.RowRange]?
+    var selectedColumns: Range<Int>?
+}
+
 struct RowCacheEntry {
     var lineRef: BufferLine
     var generation: UInt64
     var bidiParagraphRevision: Int
+    var style: RowStyleKey
     var data: RowDrawData?
     var buffers: RowDrawBuffers?
 }
@@ -761,6 +770,10 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
 
         var rebuiltRows = 0
         var cachedRows = 0
+        let hasKittyPlacements = !terminalView.terminal.kittyGraphicsState.placementsByKey.isEmpty
+        let fullScreenRevision = terminalView.terminal.fullScreenRevision
+        let textBlinkVisible = terminalView.textBlinkVisible
+        let linkHighlightRange = terminalView.linkHighlightRange
         for row in visibleRange {
             let line = buffer.lines[row]
             let lineGeneration = line.generation
@@ -774,8 +787,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             let cacheValid = entry?.lineRef === line
                 && entry?.generation == lineGeneration
                 && entry?.bidiParagraphRevision == bidiParagraphRevision
+            let style = RowStyleKey(fullScreenRevision: fullScreenRevision,
+                                    textBlinkVisible: textBlinkVisible,
+                                    linkHighlightRange: linkHighlightRange,
+                                    selectedColumns: terminalView.selectedColumnsRange(row: row, cols: buffer.cols))
+            // The dirty range is one span from the first touched row to the last, so a program
+            // touching the top and bottom of the screen marks every row between. A row in it
+            // rebuilds only if it really changed: its cells are covered by `cacheValid`, the rest
+            // by its style. Images are not in either, so a row with one keeps the plain rule.
+            let dirtyChanged = (rebuildRange?.contains(row) ?? false)
+                && (entry?.style != style || hasKittyPlacements || line.images != nil)
             let needsRebuild = needsFullRebuild ||
-                (rebuildRange?.contains(row) ?? false) ||
+                dirtyChanged ||
                 !cacheValid ||
                 (bufferingMode == .perFrameAggregated && entry?.data == nil)
             let rowBuffers: RowDrawBuffers?
@@ -793,6 +816,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                 let buffers = bufferingMode == .perRowPersistent ? makeRowBuffers(from: rowData) : nil
                 entry = RowCacheEntry(lineRef: line, generation: lineGeneration,
                                       bidiParagraphRevision: bidiParagraphRevision,
+                                      style: style,
                                       data: rowData, buffers: buffers)
                 rowCache[row] = entry
                 rowBuffers = buffers
@@ -810,6 +834,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                 if cached.data == nil {
                     entry = RowCacheEntry(lineRef: line, generation: lineGeneration,
                                           bidiParagraphRevision: bidiParagraphRevision,
+                                          style: style,
                                           data: rowData, buffers: cached.buffers)
                     rowCache[row] = entry
                 }
@@ -839,6 +864,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
                 let buffers = bufferingMode == .perRowPersistent ? makeRowBuffers(from: rowData) : nil
                 entry = RowCacheEntry(lineRef: line, generation: lineGeneration,
                                       bidiParagraphRevision: bidiParagraphRevision,
+                                      style: style,
                                       data: rowData, buffers: buffers)
                 rowCache[row] = entry
                 rowBuffers = buffers

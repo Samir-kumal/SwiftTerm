@@ -6274,8 +6274,13 @@ open class Terminal {
         updateRange (endLine, scrolling: scrolling)
     }
     
+    /// Bumped by `updateFullScreen`: something every row's look depends on changed (colors, reverse
+    /// video, a view setting), not a line's cells. Renderers caching per-line draw state compare it.
+    public private(set) var fullScreenRevision: UInt64 = 0
+
     public func updateFullScreen ()
     {
+        fullScreenRevision &+= 1
         refreshStart = 0
         refreshEnd = rows
         
