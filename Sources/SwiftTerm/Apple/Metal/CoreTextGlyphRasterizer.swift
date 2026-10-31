@@ -5,6 +5,13 @@ import CoreText
 final class CoreTextGlyphRasterizer {
     var fontSmoothing: Bool = true
 
+    /// Whether the glyph draws nothing, as a space does.
+    func isBlank(font: CTFont, glyph: CGGlyph) -> Bool {
+        var glyphVar = glyph
+        let rect = CTFontGetBoundingRectsForGlyphs(font, .default, &glyphVar, nil, 1)
+        return rect.width <= 0 || rect.height <= 0
+    }
+
     func rasterize(font: CTFont, glyph: CGGlyph) -> GlyphBitmap? {
         var glyphVar = glyph
         let rect = CTFontGetBoundingRectsForGlyphs(font, .default, &glyphVar, nil, 1)

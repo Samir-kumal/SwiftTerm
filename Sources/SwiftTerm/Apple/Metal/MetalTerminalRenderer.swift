@@ -205,6 +205,9 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     private let colorAtlas: GlyphAtlas
     private let rasterizer = CoreTextGlyphRasterizer()
     private var glyphCache: [GlyphKey: GlyphEntry] = [:]
+    // Not tied to an atlas, so these outlive an atlas reset.
+    private var blankGlyphs: Set<GlyphKey> = []
+    private let fontNames = FontNameCache()
     private var scaledFontCache: [GlyphKey: CTFont] = [:]
     private var customGlyphCache: [CustomGlyphKey: CustomGlyphEntry] = [:]
     private let imageTextureCache = NSMapTable<AnyObject, MTLTexture>(keyOptions: .weakMemory, valueOptions: .strongMemory)
@@ -1623,11 +1626,18 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     }
 
     private func glyphEntry(for font: CTFont, glyph: CGGlyph) -> GlyphEntry? {
-        let key = GlyphKey(fontName: CTFontCopyPostScriptName(font) as String,
+        let key = GlyphKey(fontName: fontNames.name(of: font),
                            size: CTFontGetSize(font),
                            glyph: glyph)
         if let cached = glyphCache[key] {
             return cached
+        }
+        if blankGlyphs.contains(key) {
+            return nil
+        }
+        if rasterizer.isBlank(font: font, glyph: glyph) {
+            blankGlyphs.insert(key)
+            return nil
         }
         guard let bitmap = rasterizer.rasterize(font: font, glyph: glyph) else {
             return nil
@@ -1651,7 +1661,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
     }
 
     private func scaledFontFor(font: CTFont, scale: CGFloat) -> CTFont {
-        let key = GlyphKey(fontName: CTFontCopyPostScriptName(font) as String,
+        let key = GlyphKey(fontName: fontNames.name(of: font),
                            size: CTFontGetSize(font) * scale,
                            glyph: 0)
         if let cached = scaledFontCache[key] {
@@ -2001,6 +2011,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
         private let maxEntries: Int
         private var cache: [ShaperKey: ShaperRun] = [:]
         private var order: [ShaperKey] = []
+        private let fontNames = FontNameCache()
 
         init(maxEntries: Int) {
             self.maxEntries = maxEntries
@@ -2010,7 +2021,7 @@ final class MetalTerminalRenderer: NSObject, MTKViewDelegate {
             guard !text.isEmpty else {
                 return nil
             }
-            let key = ShaperKey(fontName: CTFontCopyPostScriptName(font) as String,
+            let key = ShaperKey(fontName: fontNames.name(of: font),
                                 fontSize: CTFontGetSize(font),
                                 text: text)
             if let cached = cache[key] {
