@@ -2516,7 +2516,7 @@ extension TerminalView {
     // The code below is intended to not repaint too often, which can produce flicker, for example
     // when the user refreshes the display, and this repains the screen, as dispatch delivers data
     // in blocks of 1024 bytes, which is not enough to cover the whole screen, so this delays
-    // the update for a 1/600th of a second.
+    // the update by `redrawDelay` (one 60 Hz frame unless a subclass changes it).
     //
     // It is also cheap, so should be called when new data has been posted or received.
     func queuePendingDisplay ()
@@ -2526,14 +2526,19 @@ extension TerminalView {
         }
         // throttle
         if !pendingDisplay {
-            let fps60 = 16670000
-            // let fps30 = 16670000*2
-            let fpsDelay = fps60
             pendingDisplay = true
-            DispatchQueue.main.asyncAfter(
-                deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay)),
-                execute: updateDisplay)
+            scheduleRedraw { [weak self] in self?.updateDisplay() }
+        }
+    }
+
+    /// Runs `work` on the main queue after `redrawDelay`; at once (next turn
+    /// of the run loop) when the delay is zero.
+    func scheduleRedraw(_ work: @escaping () -> Void) {
+        let delay = redrawDelay
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         } else {
+            DispatchQueue.main.async(execute: work)
         }
     }
 
@@ -2557,15 +2562,12 @@ extension TerminalView {
             return
         }
         if !pendingMetalDisplay {
-            let fps60 = 16670000
-            let fpsDelay = fps60
             pendingMetalDisplay = true
-            DispatchQueue.main.asyncAfter(
-                deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay))) { [weak self] in
-                    guard let self else { return }
-                    self.pendingMetalDisplay = false
-                    self.requestMetalDisplay()
-                }
+            scheduleRedraw { [weak self] in
+                guard let self else { return }
+                self.pendingMetalDisplay = false
+                self.requestMetalDisplay()
+            }
         }
     }
 #endif

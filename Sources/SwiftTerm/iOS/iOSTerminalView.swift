@@ -199,6 +199,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     var accessibility: AccessibilityService = AccessibilityService()
     var search: SearchService!
     var debug: UIView?
+    /// How long a redraw waits after the first change, so changes arriving
+    /// meanwhile are drawn together. The default is one 60 Hz frame; zero
+    /// draws on the display's next refresh. Read each time a redraw is queued.
+    open var redrawDelay: TimeInterval { 0.01667 }
     var pendingDisplay: Bool = false
     var textBlinkVisible = true
     var textBlinkTimer: Timer?
